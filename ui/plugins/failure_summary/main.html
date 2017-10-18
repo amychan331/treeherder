@@ -7,7 +7,10 @@
                    prevent-default-on-left-click
                    ng-show="(filerInAddress || user.is_staff)"
                    ng-click="fileBug($index)"
+                   data-toggle="modal"
+                   data-target=".bugfiler-modal"
                    title="file a bug for this failure">
+
                   <i class="fa fa-bug"></i>
                 </a>
                 <span>{{::suggestion.search}}</span>
