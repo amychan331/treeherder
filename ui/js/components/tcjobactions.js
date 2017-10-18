@@ -1,0 +1,135 @@
+'use strict';
+
+treeherder.component('tcJobActions', {
+    templateUrl: 'partials/main/tcjobactions.html',
+    bindings: {
+        job: '<',
+        repoName: '<',
+        resultsetId: '<',
+    },
+    controller: [
+        '$scope', '$http', 'ThResultSetStore',
+        'ThJobDetailModel', 'thTaskcluster', 'ThTaskclusterErrors',
+        'thNotify', 'tcactions',
+        'jsyaml', 'Ajv', 'jsonSchemaDefaults',
+        function ($scope, $http, ThResultSetStore,
+                  ThJobDetailModel, thTaskcluster, ThTaskclusterErrors, thNotify,
+                  tcactions, jsyaml, Ajv, jsonSchemaDefaults) {
+            const ajv = new Ajv({
+                format: 'full',
+                verbose: true,
+                allErrors: true
+            });
+            let decisionTaskId;
+            let originalTaskId;
+            let originalTask;
+            let validate;
+            $scope.input = {};
+
+            $scope.cancel = function () {
+                // $uibModalInstance.dismiss('cancel');
+            };
+
+            $scope.updateSelectedAction = function () {
+                if ($scope.input.selectedAction.schema) {
+                    $scope.schema = jsyaml.safeDump($scope.input.selectedAction.schema);
+                    $scope.input.payload = jsyaml.safeDump(jsonSchemaDefaults($scope.input.selectedAction.schema));
+                    validate = ajv.compile($scope.input.selectedAction.schema);
+                } else {
+                    $scope.input.payload = undefined;
+                    $scope.schema = undefined;
+                    validate = undefined;
+                }
+            };
+
+            $scope.triggerAction = function () {
+                $scope.triggering = true;
+
+                let tc = thTaskcluster.client();
+
+                let input = null;
+                if (validate && $scope.input.payload) {
+                    try {
+                        input = jsyaml.safeLoad($scope.input.payload);
+                    } catch (e) {
+                        $scope.triggering = false;
+                        thNotify.send(`YAML Error: ${e.message}`, 'danger');
+                        return;
+                    }
+                    const valid = validate(input);
+                    if (!valid) {
+                        $scope.triggering = false;
+                        thNotify.send(ajv.errorsText(validate.errors), 'danger');
+                        return;
+                    }
+                }
+
+                let actionTaskId = tc.slugid();
+                tcactions.submit({
+                    action: $scope.input.selectedAction,
+                    actionTaskId,
+                    decisionTaskId,
+                    taskId: originalTaskId,
+                    task: originalTask,
+                    input,
+                    staticActionVariables: $scope.staticActionVariables,
+                }).then(function () {
+                    $scope.triggering = false;
+                    let message = 'Custom action request sent successfully:';
+                    let url = `https://tools.taskcluster.net/tasks/${actionTaskId}`;
+
+                    // For the time being, we are redirecting specific actions to
+                    // specific urls that are different than usual. At this time, we are
+                    // only directing loaner tasks to the loaner UI in the tools site.
+                    // It is possible that we may make this a part of the spec later.
+                    const loaners = ['docker-worker-linux-loaner', 'generic-worker-windows-loaner'];
+                    if (_.includes(loaners, $scope.input.selectedAction.name)) {
+                        message = 'Visit Taskcluster Tools site to access loaner:';
+                        url = `${url}/connect`;
+                    }
+                    $scope.$apply(thNotify.send(message, 'success', {
+                        linkText: 'Open in Taskcluster',
+                        url,
+                    }));
+                    // $uibModalInstance.close('request sent');
+                }, function (e) {
+                    $scope.$apply(thNotify.send(ThTaskclusterErrors.format(e), 'danger', { sticky: true }));
+                    $scope.triggering = false;
+                    // $uibModalInstance.close('error');
+                });
+            };
+
+            // prevent closing of dialog while we're triggering
+            $scope.$on('modal.closing', function (event) {
+                if ($scope.triggering) {
+                    event.preventDefault();
+                }
+            });
+
+            $('#job-actions-modal').on('show.bs.modal', function (event) {
+                var button = $(event.relatedTarget); // Button that triggered the modal
+                var repoName = button.data('repo-name'); // Extract info from data-* attributes
+                var resultsetId = button.data('resultset-id'); // Extract info from data-* attributes
+                // If necessary, you could initiate an AJAX request here (and then do the updating in a callback).
+                // Update the modal's content. We'll use jQuery here, but you could use a data binding library or other methods instead.
+                // var modal = $(this);
+                // modal.find('.modal-title').text('New message to ' + recipient);
+                // modal.find('.modal-body input').val(recipient);
+                console.log("doing the modal", repoName, resultsetId);
+
+                ThResultSetStore.getGeckoDecisionTaskId(repoName, resultsetId).then((dtId) => {
+                    decisionTaskId = dtId;
+                    tcactions.load(decisionTaskId, this.job).then((results) => {
+                        originalTask = results.originalTask;
+                        originalTaskId = results.originalTaskId;
+                        $scope.actions = results.actions;
+                        $scope.staticActionVariables = results.staticActionVariables;
+                        $scope.input.selectedAction = $scope.actions[0];
+                        $scope.updateSelectedAction();
+                    });
+                });
+
+            });
+
+        }]
+});

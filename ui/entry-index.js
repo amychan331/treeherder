@@ -43,6 +43,7 @@ require('./js/services/log.js');
 require('./js/providers.js');
 require('./js/values.js');
 require('./js/components/auth.js');
+require('./js/components/tcjobactions.js');
 require('./js/directives/treeherder/main.js');
 require('./js/directives/treeherder/clonejobs.js');
 require('./js/directives/treeherder/resultsets.js');
