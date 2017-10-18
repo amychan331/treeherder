@@ -87,7 +87,6 @@ require('./js/controllers/notification.js');
 require('./js/controllers/filters.js');
 require('./js/controllers/jobs.js');
 require('./js/controllers/bugfiler.js');
-require('./js/controllers/tcjobactions.js');
 require('./plugins/tabs.js');
 require('./plugins/controller.js');
 require('./plugins/pinboard.js');
