@@ -190,23 +190,6 @@ treeherderApp.controller('ResultSetCtrl', [
             });
         };
 
-        $scope.customPushAction = function () {
-            // tcJobActions.open({
-            //     templateUrl: 'partials/main/tcjobactions.html',
-            //     controller: 'TCJobActionsCtrl',
-            //     size: 'lg',
-            //     resolve: {
-            //         job: () => null,
-            //         repoName: function () {
-            //             return $scope.repoName;
-            //         },
-            //         resultsetId: function () {
-            //             return $scope.resultset.id;
-            //         }
-            //     }
-            // });
-        };
-
         $scope.triggerMissingJobs = function (revision) {
             if (!window.confirm('This will trigger all missing jobs for revision ' + revision + '!\n\nClick "OK" if you want to proceed.')) {
                 return;

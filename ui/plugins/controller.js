@@ -531,25 +531,6 @@ treeherder.controller('PluginCtrl', [
             $scope.cancelJobs([$scope.job]);
         };
 
-        $scope.customJobAction = function () {
-            $uibModal.open({
-                templateUrl: 'partials/main/tcjobactions.html',
-                controller: 'TCJobActionsCtrl',
-                size: 'lg',
-                resolve: {
-                    job: function () {
-                        return $scope.job;
-                    },
-                    repoName: function () {
-                        return $scope.repoName;
-                    },
-                    resultsetId: function () {
-                        return $scope.resultsetId;
-                    }
-                }
-            });
-        };
-
         // Test to expose the reftest button in the job details navbar
         $scope.isReftest = function () {
             if ($scope.selectedJob) {

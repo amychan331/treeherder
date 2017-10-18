@@ -67,10 +67,6 @@ treeherder.component('tcJobActions', {
             let validate;
             $scope.input = {};
 
-            $scope.cancel = function () {
-                // $uibModalInstance.dismiss('cancel');
-            };
-
             $scope.updateSelectedAction = function () {
                 if ($scope.input.selectedAction.schema) {
                     $scope.schema = jsyaml.safeDump($scope.input.selectedAction.schema);
@@ -132,11 +128,11 @@ treeherder.component('tcJobActions', {
                         linkText: 'Open in Taskcluster',
                         url,
                     }));
-                    // $uibModalInstance.close('request sent');
+                    $('job-actions-modal').modal('hide');
                 }, function (e) {
                     $scope.$apply(thNotify.send(ThTaskclusterErrors.format(e), 'danger', { sticky: true }));
                     $scope.triggering = false;
-                    // $uibModalInstance.close('error');
+                    $('job-actions-modal').modal('hide');
                 });
             };
 
@@ -148,19 +144,14 @@ treeherder.component('tcJobActions', {
             });
 
             $('#job-actions-modal').on('show.bs.modal', function (event) {
-                var button = $(event.relatedTarget); // Button that triggered the modal
-                var repoName = button.data('repo-name'); // Extract info from data-* attributes
-                var resultsetId = button.data('resultset-id'); // Extract info from data-* attributes
-                // If necessary, you could initiate an AJAX request here (and then do the updating in a callback).
-                // Update the modal's content. We'll use jQuery here, but you could use a data binding library or other methods instead.
-                // var modal = $(this);
-                // modal.find('.modal-title').text('New message to ' + recipient);
-                // modal.find('.modal-body input').val(recipient);
-                console.log("doing the modal", repoName, resultsetId);
+                const button = $(event.relatedTarget); // Button that triggered the modal
+                const job = button.data('job');
+                const repoName = button.data('repo-name');
+                const resultsetId = button.data('resultset-id');
 
                 ThResultSetStore.getGeckoDecisionTaskId(repoName, resultsetId).then((dtId) => {
                     decisionTaskId = dtId;
-                    tcactions.load(decisionTaskId, this.job).then((results) => {
+                    tcactions.load(decisionTaskId, job).then((results) => {
                         originalTask = results.originalTask;
                         originalTaskId = results.originalTaskId;
                         $scope.actions = results.actions;
