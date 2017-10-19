@@ -9,8 +9,10 @@ treeherder.component('bugFiler', {
             <div class="modal-content">
 
                 <div class="modal-header">
-                  <button type="button" class="close" ng-click="cancelFiler()"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-                  <h4>Intermittent Bug Filer</h4>
+                  <h4 class="modal-title" id="bugfiler-modalLabel">Intermittent Bug Filer</h4>
+                  <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                  </button>
                 </div>
                 <div class="modal-body">
                   <form id="modalForm">
@@ -108,23 +110,21 @@ treeherder.component('bugFiler', {
                   </form>
                 </div>
                 <div class="modal-footer">
-                  <button name="modalCancelButton" id="modalCancelButton" type="button" ng-click="cancelFiler()"> Cancel </button>
+                  <button name="modalCancelButton" id="modalCancelButton" type="button" data-dismiss="modal" aria-label="Cancel"> Cancel</button>
                   <button name="modalSubmitButton" id="modalSubmitButton" type="button" ng-click="submitFiler()"> Submit Bug </button>
                 </div>
 
             </div>
           </div>
         </div>
-
     `,
-    controller: ['$scope', '$rootScope', '$http', 'summary',
-        'search_terms', 'fullLog', 'parsedLog', 'reftest', 'selectedJob',
-        'allFailures', 'crashSignatures', 'successCallback', 'thNotify',
-        function ($scope, $rootScope, $http, summary, search_terms,
-                  fullLog, parsedLog, reftest, selectedJob, allFailures,
-                  crashSignatures, successCallback, thNotify) {
+    controller: ['$scope', '$rootScope', '$http', 'thNotify', 'thReftestStatus',
+        'thPinboard', 'thEvents',
+        function ($scope, $rootScope, $http, thNotify, thReftestStatus,
+            thPinboard, thEvents) {
 
             const bzBaseUrl = "https://bugzilla.mozilla.org/";
+            // const bzBaseUrl = "https://landfill.bugzilla.org/bugzilla-5.0-branch/";
             const hgBaseUrl = "https://hg.mozilla.org/";
             const dxrBaseUrl = "https://dxr.mozilla.org/";
 
@@ -139,26 +139,14 @@ treeherder.component('bugFiler', {
                 }
             };
 
-            /*
-             **
-             */
-            $scope.isReftest = function () {
-                return reftest !== "";
-            };
-
-            $scope.search_terms = search_terms;
-            $scope.parsedLog = parsedLog;
-            $scope.fullLog = fullLog;
-            $scope.crashSignatures = crashSignatures.join("\n");
-            if ($scope.isReftest()) {
-                $scope.reftest = reftest;
-            }
-
             $scope.unhelpfulSummaryReason = function () {
-                if (search_terms.length === 0) {
+                if (!$scope.search_terms || !$scope.modalSummary) {
+                    return; // not yet initialized.
+                }
+                if ($scope.search_terms.length === 0) {
                     return "Selected failure does not contain any searchable terms.";
                 }
-                if (_.every(search_terms, function (term) {
+                if (_.every($scope.search_terms, function (term) {
                     return !$scope.modalSummary.includes(term);
                 })) {
                     return "Summary does not include the full text of any of the selected failure's search terms:";
@@ -173,32 +161,28 @@ treeherder.component('bugFiler', {
                 var thisFailure = "";
 
                 // Auto-block the stylo-bustage metabug if this is a stylo failure
-                if (selectedJob.build_platform.includes("stylo")) {
+                if ($scope.selectedJob.build_platform.includes("stylo")) {
                     $scope.modalBlocks = "1381405,";
                 }
 
-                for (var i = 0; i < allFailures.length; i++) {
+                for (var i = 0; i < $scope.allFailures.length; i++) {
                     for (var j = 0; j < $scope.omittedLeads.length; j++) {
-                        if (allFailures[i][0].search($scope.omittedLeads[j]) >= 0 && allFailures[i].length > 1) {
-                            allFailures[i].shift();
+                        if ($scope.allFailures[i][0].search($scope.omittedLeads[j]) >= 0 && $scope.allFailures[i].length > 1) {
+                            $scope.allFailures[i].shift();
                         }
                     }
 
-                    allFailures[i][0] = allFailures[i][0].replace("REFTEST TEST-UNEXPECTED-PASS", "TEST-UNEXPECTED-PASS");
+                    $scope.allFailures[i][0] = $scope.allFailures[i][0].replace("REFTEST TEST-UNEXPECTED-PASS", "TEST-UNEXPECTED-PASS");
 
                     if (i !== 0) {
                         thisFailure += "\n";
                     }
-                    thisFailure += allFailures[i].join(" | ");
+                    thisFailure += $scope.allFailures[i].join(" | ");
                 }
                 $scope.thisFailure = thisFailure;
 
                 $scope.findProduct();
             };
-
-            $scope.parsedSummary = "";
-            $scope.initiate = $scope.initiate;
-            $scope.possibleFilename = "";
 
             /*
              *  Find the first thing in the summary line that looks like a filename.
@@ -263,20 +247,6 @@ treeherder.component('bugFiler', {
                 return [summary, $scope.possibleFilename];
             };
 
-            $scope.parsedSummary = $scope.parseSummary(summary);
-            var summaryString = $scope.parsedSummary[0].join(" | ");
-            if (selectedJob.job_group_name.toLowerCase().includes("reftest")) {
-                var re = /layout\/reftests\//gi;
-                summaryString = summaryString.replace(re, "");
-            }
-            $scope.modalSummary = "Intermittent " + summaryString;
-
-            $scope.toggleFilerSummaryVisibility = function () {
-                $scope.isFilerSummaryVisible = !$scope.isFilerSummaryVisible;
-            };
-
-            $scope.isFilerSummaryVisible = false;
-
             /*
              *  Attempt to find a good product/component for this failure
              */
@@ -316,14 +286,14 @@ treeherder.component('bugFiler', {
                     }
 
                     // Try to fix up file paths for some job types.
-                    if (selectedJob.job_group_name.toLowerCase().includes("spidermonkey")) {
+                    if ($scope.selectedJob.job_group_name.toLowerCase().includes("spidermonkey")) {
                         failurePath = "js/src/tests/" + failurePath;
                     }
-                    if (selectedJob.job_group_name.toLowerCase().includes("videopuppeteer ")) {
+                    if ($scope.selectedJob.job_group_name.toLowerCase().includes("videopuppeteer ")) {
                         failurePath = failurePath.replace("FAIL ", "");
                         failurePath = "dom/media/test/external/external_media_tests/" + failurePath;
                     }
-                    if (selectedJob.job_group_name.toLowerCase().includes("web platform")) {
+                    if ($scope.selectedJob.job_group_name.toLowerCase().includes("web platform")) {
                         failurePath = failurePath.startsWith("mozilla/tests") ?
                             `testing/web-platform/${failurePath}` :
                             `testing/web-platform/tests/${failurePath}`;
@@ -394,7 +364,7 @@ treeherder.component('bugFiler', {
             // Some job types are special, lets explicitly handle them.
             var injectProducts = function (fp) {
                 if ($scope.suggestedProducts.length === 0) {
-                    var jg = selectedJob.job_group_name.toLowerCase();
+                    var jg = $scope.selectedJob.job_group_name.toLowerCase();
                     if (jg.includes("web platform")) {
                         addProduct("Testing :: web-platform-tests");
                     }
@@ -411,12 +381,53 @@ treeherder.component('bugFiler', {
                 $scope.selection.selectedProduct = $scope.suggestedProducts[0];
             };
 
-            /*
-             *  Same as clicking outside of the modal, but with a nice button-clicking feel...
-             */
-            // $scope.cancelFiler = function () {
-            //     $scope.dismiss('cancel');
-            // };
+
+            $scope.toggleFilerSummaryVisibility = function () {
+                $scope.isFilerSummaryVisible = !$scope.isFilerSummaryVisible;
+            };
+
+            $('#bugfiler-modal').on('show.bs.modal', function (event) {
+                const button = $(event.relatedTarget); // Button that triggered the modal
+                const suggestion = button.data('suggestion');
+                const allSuggestions = button.data('all-suggestions');
+                $scope.selectedJob = button.data('selected-job');
+                $scope.fullLog = button.data('full-log');
+                $scope.parsedLog = button.data('parsed-log');
+
+                $scope.summary = suggestion.search;
+                $scope.allFailures = allSuggestions.map(sug => sug.search.split(" | "));
+                $scope.crashSignatures = [];
+                var crashRegex = /application crashed \[@ (.+)\]$/g;
+                var crash = $scope.summary.match(crashRegex);
+                if (crash) {
+                    var signature = crash[0].split("application crashed ")[1];
+                    $scope.crashSignatures.push(signature);
+                }
+
+                // for (var i=0; i<$scope.suggestions.length; i++) {
+                //     $scope.allFailures.push($scope.suggestions[i].search.split(" | "));
+                // }
+
+                $scope.search_terms = suggestion.search_terms;
+                console.log("search_terms", $scope.search_terms);
+                $scope.reftest = thReftestStatus($scope.selectedJob) ? $scope.reftestUrl : "";
+
+                $scope.parsedSummary = $scope.parseSummary($scope.summary);
+                var summaryString = $scope.parsedSummary[0].join(" | ");
+
+
+                if ($scope.selectedJob.job_group_name.toLowerCase().includes("reftest")) {
+                    var re = /layout\/reftests\//gi;
+                    summaryString = summaryString.replace(re, "");
+                }
+                $scope.modalSummary = "Intermittent " + summaryString;
+
+                $scope.isFilerSummaryVisible = false;
+                $scope.possibleFilename = "";
+
+                $scope.initiate();
+
+            });
 
             $scope.checkedLogLinks = {
                 parsedLog: $scope.parsedLog,
@@ -430,9 +441,8 @@ treeherder.component('bugFiler', {
              *  Actually send the gathered information to bugzilla.
              */
             $scope.submitFiler = function () {
-                var summarystring = $scope.modalSummary;
-                var productString = "";
-                var componentString = "";
+                let productString = "";
+                let componentString = "";
 
                 $scope.toggleForm(true);
 
@@ -443,7 +453,7 @@ treeherder.component('bugFiler', {
                 }
 
                 if ($scope.selection.selectedProduct) {
-                    var prodParts = $scope.selection.selectedProduct.split(" :: ");
+                    const prodParts = $scope.selection.selectedProduct.split(" :: ");
                     productString += prodParts[0];
                     componentString += prodParts[1];
                 } else {
@@ -452,7 +462,7 @@ treeherder.component('bugFiler', {
                     return;
                 }
 
-                var descriptionStrings = _.reduce($scope.checkedLogLinks, function (result, link) {
+                let descriptionStrings = _.reduce($scope.checkedLogLinks, function (result, link) {
                     if (link) {
                         result = result + link + "\n\n";
                     }
@@ -462,14 +472,9 @@ treeherder.component('bugFiler', {
                     descriptionStrings += $scope.modalComment;
                 }
 
-                var keywords = $scope.isIntermittent ? ["intermittent-failure"] : [];
-
-                var severity = "normal";
-                var priority = "P5";
-                var blocks = $scope.modalBlocks;
-                var dependsOn = $scope.modalDependsOn;
-                var seeAlso = $scope.modalSeeAlso;
-                var crashSignature = $scope.crashSignatures;
+                const keywords = $scope.isIntermittent ? ["intermittent-failure"] : [];
+                const crashSignature = $scope.crashSignatures;
+                let severity = "normal";
                 if (crashSignature.length > 0) {
                     keywords.push("crash");
                     severity = "critical";
@@ -479,13 +484,9 @@ treeherder.component('bugFiler', {
                 // Only request the versions because some products take quite a long time to fetch the full object
                 $http.get(bzBaseUrl + "rest/product/" + productString + "?include_fields=versions")
                     .then(function (response) {
-                        var productJSON = response.data;
-                        var productObject = productJSON.products[0];
-
+                        const productObject = response.data.products[0];
                         // Find the newest version for the product that is_active
-                        var version = _.findLast(productObject.versions, function (version) {
-                            return version.is_active === true;
-                        });
+                        const version = _.findLast(productObject.versions, ver => ver.is_active === true);
 
                         return $http({
                             url: "api/bugzilla/create_bug/",
@@ -496,33 +497,40 @@ treeherder.component('bugFiler', {
                             data: {
                                 product: productString,
                                 component: componentString,
-                                summary: summarystring,
+                                summary: $scope.modalSummary,
                                 keywords: keywords,
                                 version: version.name,
-                                blocks: blocks,
-                                depends_on: dependsOn,
-                                see_also: seeAlso,
+                                blocks: $scope.modalBlocks,
+                                depends_on: $scope.modalDependsOn,
+                                see_also: $scope.modalSeeAlso,
                                 crash_signature: crashSignature,
-                                severity: severity,
-                                priority: priority,
+                                severity,
+                                priority: "P5",
                                 comment: descriptionStrings,
                                 comment_tags: "treeherder"
                             }
                         });
                     })
                     .then((response) => {
-                        var data = response.data;
+                        const data = response.data;
                         if (data.failure) {
-                            var error = JSON.parse(data.failure.join(""));
+                            const error = JSON.parse(data.failure.join(""));
                             thNotify.send("Bugzilla error: " + error.message, "danger", { sticky: true });
                             $scope.toggleForm(false);
                         } else {
-                            successCallback(data);
-                            $scope.cancelFiler();
+                            // Auto-classify this failure now that the bug has been filed
+                            // and we have a bug number
+                            thPinboard.pinJob($scope.selectedJob);
+                            thPinboard.addBug({ id: data.success });
+                            $rootScope.$evalAsync(
+                                $rootScope.$emit(
+                                    thEvents.saveClassification));
+                            // Open the newly filed bug in a new tab or window for further editing
+                            window.open("https://bugzilla.mozilla.org/show_bug.cgi?id=" + data.success);
                         }
                     })
                     .catch((response) => {
-                        var failureString = "Bug Filer API returned status " + response.status + " (" + response.statusText + ")";
+                        let failureString = "Bug Filer API returned status " + response.status + " (" + response.statusText + ")";
                         if (response.data && response.data.failure) {
                             failureString += "\n\n" + response.data.failure;
                         }
